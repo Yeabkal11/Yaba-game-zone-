@@ -1,103 +1,99 @@
-# main.py - Main entry point for the application
-
-import uvicorn
+import logging
 import os
-import sys
-import asyncio
-from dotenv import load_dotenv
+from fastapi import FastAPI, Request, Response, status, Depends
+from telegram import Update
+from telegram.ext import Application
+from sqlalchemy.ext.asyncio import AsyncSession
+from decimal import Decimal
 
-from database_models.models import init_db
+# Adjust these import paths to match your final project structure
+from bot.handlers import setup_handlers
+from bot.wallet import verify_transaction
+from database_models.manager import get_db_session, transactions, users
 
-def main():
+# --- Logging Setup ---
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
+
+# --- FastAPI App and Telegram Bot Initialization ---
+app = FastAPI(
+    title="Yeab Game Zone API",
+    description="Handles webhooks for the Ludo Telegram Bot.",
+    version="1.0.0"
+)
+
+# Initialize the python-telegram-bot application instance.
+# The webhook itself will be set by a separate startup process.
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+
+if not TELEGRAM_BOT_TOKEN:
+    logger.error("FATAL: TELEGRAM_BOT_TOKEN environment variable is not set!")
+    # This will prevent the bot from working, but the API will still start
+    # to allow for health checks and other potential endpoints.
+    bot_app = None
+else:
+    # This sets up all your command and callback handlers from bot/handlers.py
+    ptb_app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+    bot_app = setup_handlers(ptb_app)
+
+
+# --- API Endpoints ---
+
+@app.post("/api/telegram/webhook")
+async def telegram_webhook(request: Request):
     """
-    Main entry point for running the application.
-    This script handles both database initialization and running the web server.
+    This is the main endpoint to receive updates from Telegram's webhook.
+    It passes the update to the python-telegram-bot instance for processing.
     """
-    load_dotenv()
+    if not bot_app:
+        logger.error("Cannot process Telegram update: Bot application not initialized.")
+        return Response(status_code=503, content="Service Unavailable: Bot not configured")
 
-    # Handle the 'initdb' command for the build process
-    if len(sys.argv) > 1 and sys.argv[1] == "initdb":
-        print("--- Initializing Database as per buildCommand ---")
-        asyncio.run(init_db())
-        print("--- Database Initialization Complete ---")
-        return # Exit after finishing the build command task
-
-    # --- IMPLEMENTING YOUR PROMPT ---
-    # This is the logic you provided, adapted for our project.
-
-    print("--- Starting Uvicorn Web Server ---")
-    
-    # Get the port from Render's PORT environment variable.
-    # Default to 10000 (Render's default) if not set.
     try:
-        port = int(os.environ.get("PORT", 10000))
-        print(f"--- Binding to host 0.0.0.0 on port: {port} ---")
-    except ValueError:
-        print("--- Invalid PORT env var. Defaulting to 10000. ---")
-        port = 10000
-
-    # Here we replace "slime.run" with "uvicorn.run" and point it
-    # to your FastAPI app located in "api/main.py".
-    
+        data = await request.json()
+        update = Update.de_json(data, bot_app.bot)
+        await bot_app.process_update(update)
+        return Response(status_code=status.HTTP_200_OK)
+    except Exception as e:
+        logger.error(f"Error processing Telegram update: {e}")
+        return Response(status_code=500, content="Internal Server Error")
 
 
-# This makes the script directly runnable with `python main.py`
-if __name__ == "__main__":
-    main()```
+@app.post("/api/chapa/callback")
+async def chapa_callback(request: Request, db: AsyncSession = Depends(get_db_session)):
+    """
+    This endpoint receives server-to-server notifications from the Chapa payment gateway.
+    """
+    try:
+        data = await request.json()
+        tx_ref = data.get("tx_ref")
+        logger.info(f"Received Chapa callback for tx_ref: {tx_ref}")
 
-#### **Step 2: Update `render.yaml`**
+        if tx_ref and await verify_transaction(tx_ref):
+            logger.info(f"Chapa transaction successfully verified for tx_ref: {tx_ref}")
+            #
+            # TODO: Add your database logic here to credit the user's wallet
+            # 1. Find the transaction in your 'transactions' table via tx_ref
+            # 2. Check if its status is 'pending'
+            # 3. Calculate the credited amount (amount - 2% fee)
+            # 4. Update the user's balance in the 'users' table
+            # 5. Set the transaction status to 'completed'
+            #
+            pass # Placeholder for the logic described above
 
-Now we tell Render to use our new, reliable `main.py` script as the start command. This is much simpler and less prone to shell errors.
+        return Response(status_code=status.HTTP_200_OK)
+    except Exception as e:
+        logger.error(f"Error processing Chapa callback: {e}")
+        return Response(status_code=500, content="Internal Server Error")
 
-**Action:** Go to your `render.yaml` file on GitHub. Click the edit icon, **delete everything**, and **replace it with this final, simplified version**:
 
-```yaml
-# render.yaml - FINAL VERSION using programmatic start
-
-services:
-  - type: web
-    name: yeab-game-zone-api
-    env: python
-    plan: starter
-    region: frankfurt
-    # The build command still prepares the database
-    buildCommand: "pip install -r requirements.txt && python main.py initdb"
-    # The start command is now extremely simple and reliable
-    startCommand: "python main.py"
-    healthCheckPath: /health
-    envVars:
-      - key: DATABASE_URL
-        fromDatabase:
-          name: yeab-ludo-db
-          property: connectionString
-      - key: TELEGRAM_BOT_TOKEN
-        sync: false
-      - key: CHAPA_API_KEY
-        sync: false
-      - key: WEBHOOK_URL
-        fromService:
-          type: web
-          name: yeab-game-zone-api
-          property: url
-
-  - type: pserv
-    name: yeab-ludo-db
-    region: frankfurt
-    databaseName: yeab_game_db
-    databaseUser: yeab_user
-    plan: free
-
-  - type: worker
-    name: yeab-game-forfeit-worker
-    env: python
-    plan: starter
-    region: frankfurt
-    buildCommand: "pip install -r requirements.txt"
-    startCommand: "python -m bot.worker"
-    envVars:
-      - key: DATABASE_URL
-        fromDatabase:
-          name: yeab-ludo-db
-          property: connectionString
-      - key: TELEGRAM_BOT_TOKEN
-        sync: false
+@app.get("/health", status_code=status.HTTP_200_OK)
+async def health_check():
+    """
+    A simple health check endpoint that Render uses to verify that the
+    web service is live and responsive.
+    """
+    return {"status": "healthy", "message": "API service is running."}
