@@ -1,4 +1,4 @@
-# api/main.py (Final Version)
+# api/main.py (Final Corrected Version)
 
 import logging
 import os
@@ -17,39 +17,32 @@ logger = logging.getLogger(__name__)
 
 # --- Environment Variables ---
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-WEBHOOK_URL = os.getenv("WEBHOOK_URL") # We get this from render.yaml
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 
-# --- Webhook Setting Function ---
-async def set_webhook(bot_app: Application):
-    """
-    Sets the Telegram webhook to the URL provided by Render.
-    This runs only once when the application starts.
-    """
-    if not WEBHOOK_URL:
-        logger.error("FATAL: WEBHOOK_URL environment variable is not set!")
-        return
-
-    webhook_full_url = f"{WEBHOOK_URL}/api/telegram/webhook"
-    try:
-        await bot_app.bot.set_webhook(url=webhook_full_url)
-        logger.info(f"Successfully set webhook to: {webhook_full_url}")
-    except Exception as e:
-        logger.error(f"Failed to set webhook: {e}")
-
-
-# --- Application Lifespan (Startup and Shutdown Events) ---
+# --- Application Lifespan (Handles Startup and Shutdown) ---
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # This block runs on STARTUP
     logger.info("Application startup...")
     if bot_app:
-        # We run the webhook setup in the background so it doesn't block the server
-        asyncio.create_task(set_webhook(bot_app))
+        # CRITICAL FIX 1: Initialize the bot application's internal state
+        await bot_app.initialize()
+        
+        # Set the webhook
+        if WEBHOOK_URL:
+            webhook_full_url = f"{WEBHOOK_URL}/api/telegram/webhook"
+            await bot_app.bot.set_webhook(url=webhook_full_url)
+            logger.info(f"Successfully set webhook to: {webhook_full_url}")
+        else:
+            logger.error("FATAL: WEBHOOK_URL environment variable is not set!")
     
     yield # The application runs here
     
-    # This block runs on SHUTDOWN (optional)
+    # This block runs on SHUTDOWN
     logger.info("Application shutdown...")
+    if bot_app:
+        # CRITICAL FIX 2: Gracefully shut down the bot's components
+        await bot_app.shutdown()
 
 
 # --- Main Application Initialization ---
@@ -62,7 +55,7 @@ else:
     # Initialize the bot and attach handlers
     ptb_application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
     bot_app = setup_handlers(ptb_application)
-    logger.info("Telegram bot initialized and handlers have been attached.")
+    logger.info("Telegram bot application created and handlers have been attached.")
 
 
 # --- API Endpoints ---
@@ -73,10 +66,13 @@ async def telegram_webhook(request: Request):
     try:
         data = await request.json()
         update = Update.de_json(data, bot_app.bot)
+        
+        # This will now work correctly because the application is initialized
         await bot_app.process_update(update)
+        
         return Response(status_code=200)
     except Exception as e:
-        logger.error(f"Error processing Telegram update: {e}")
+        logger.error(f"Error processing Telegram update: {e}", exc_info=True)
         return Response(status_code=500)
 
 @app.get("/health")
