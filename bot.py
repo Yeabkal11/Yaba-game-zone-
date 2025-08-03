@@ -1,10 +1,7 @@
 # bot.py
 
-# This file should contain bot-specific logic that does NOT depend on the
-# FastAPI application instance.
-# For example, you could define game logic classes or helper functions here.
+# This file is no longer needed for setting up the bot.
+# CRITICAL: It MUST NOT contain `from api.main import bot_app`.
+# All necessary setup is now handled through dependency injection.
 
-# CRITICAL: DO NOT add `from api.main import bot_app` to this file.
-# That line was the cause of the circular import error.
-
-# The bot handlers are now configured in bot/handlers.py and initialized by api/main.py.
+pass
