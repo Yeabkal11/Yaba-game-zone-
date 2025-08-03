@@ -3,37 +3,38 @@
 from telegram import Update
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
-# Import your callback functions
-# Note: You will need to create these callback functions in bot/callbacks.py
-# from .callbacks import start, play_command, join_game, handle_button_press
+# It's good practice to keep your callback logic in a separate file.
+# You would need to create bot/callbacks.py and define these functions there.
+# from .callbacks import start, play_command, join_game_callback
 
-# --- Placeholder Callback Functions (for demonstration) ---
-# Replace these with your actual logic in bot/callbacks.py
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Welcome to Yeab Game Zone! Use /play to start a game.")
+# For now, here are placeholder callbacks to make the file runnable:
+async def start_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Sends a welcome message when the /start command is issued."""
+    await update.message.reply_text("Welcome to the Yeab Game Zone Ludo Bot!")
 
-async def play_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # In a real implementation, this would show stake and win condition buttons
-    await update.message.reply_text("You have started the game creation process!")
+async def play_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Starts the game creation flow when /play is issued."""
+    # This is where you would send buttons for stake amount and win conditions.
+    await update.message.reply_text("Let's create a game! Please choose a stake amount.")
 
-# --- Handler Setup Function ---
 
 def setup_handlers(ptb_app: Application) -> Application:
     """
-    Attaches all command and callback query handlers to the `python-telegram-bot` application.
-    
-    Args:
-        ptb_app: The Application instance from `python-telegram-bot`.
-        
-    Returns:
-        The same Application instance with handlers attached.
-    """
-    # Add your command handlers
-    ptb_app.add_handler(CommandHandler("start", start))
-    ptb_app.add_handler(CommandHandler("play", play_command))
+    Attaches all command and callback query handlers to the python-telegram-bot Application.
+    This function acts as the single entry point for registering all bot behaviors.
 
-    # Add your callback query handlers for buttons
-    # ptb_app.add_handler(CallbackQueryHandler(join_game, pattern="^join_"))
-    # ptb_app.add_handler(CallbackQueryHandler(handle_button_press, pattern="^move_"))
+    Args:
+        ptb_app: The Application instance created in api/main.py.
+
+    Returns:
+        The same Application instance with all handlers correctly attached.
+    """
+    # Register command handlers
+    ptb_app.add_handler(CommandHandler("start", start_callback))
+    ptb_app.add_handler(CommandHandler("play", play_callback))
+
+    # Register callback query handlers (for inline buttons)
+    # Example:
+    # ptb_app.add_handler(CallbackQueryHandler(join_game_callback, pattern="^join_game:"))
     
     return ptb_app
