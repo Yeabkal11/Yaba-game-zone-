@@ -1,13 +1,16 @@
-# api/main.py (Final, Resilient Version)
+# api/main.py (Final Version with Command Menu)
 
 import logging
 import os
 import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, Response, status
-from telegram import Update
+from telegram import Update, BotCommand  # <-- Import BotCommand
 from telegram.ext import Application
-from telegram.error import RetryAfter  # <-- Import the specific error
+from telegram.error import RetryAfter
+
+# This is the one-way import that is correct
+from bot.handlers import setup_handlers
 
 # --- Setup ---
 logging.basicConfig(level=logging.INFO)
@@ -26,20 +29,25 @@ async def lifespan(app: FastAPI):
         await bot_app.initialize()
         
         if WEBHOOK_URL:
+            # --- Set Webhook ---
             webhook_full_url = f"{WEBHOOK_URL}/api/telegram/webhook"
             try:
-                # Attempt to set the webhook
-                await bot_app.bot.set_webhook(url=webhook_full_url)
+                await bot_app.bot.set_webhook(url=webhook_full_url, allowed_updates=Update.ALL_TYPES)
                 logger.info(f"Successfully set webhook to: {webhook_full_url}")
-            
             except RetryAfter as e:
-                # CRITICAL FIX: This is an expected error in a multi-worker environment.
-                # We log it as a warning, not a crash, because another worker already succeeded.
                 logger.warning(f"Could not set webhook due to flood control. Another worker likely succeeded. Error: {e}")
-            
             except Exception as e:
-                # Catch any other unexpected errors
                 logger.error(f"An unexpected error occurred while setting webhook: {e}")
+
+            # --- CRITICAL FIX: Set Bot Commands for the Menu ---
+            # This tells Telegram what to display in the "Menu" button.
+            commands = [
+                BotCommand("start", "Start the bot and see the welcome message"),
+                BotCommand("play", "Start a new Ludo game")
+            ]
+            await bot_app.bot.set_my_commands(commands)
+            logger.info("Successfully set the command list for the bot menu.")
+
         else:
             logger.error("FATAL: WEBHOOK_URL environment variable is not set!")
     
