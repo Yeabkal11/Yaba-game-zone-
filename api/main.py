@@ -1,15 +1,14 @@
-# api/main.py (Final Version with Command Menu)
+# api/main.py (Final Cleaned-up Version)
 
 import logging
 import os
 import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, Response, status
-from telegram import Update, BotCommand  # <-- Import BotCommand
+from telegram import Update
 from telegram.ext import Application
 from telegram.error import RetryAfter
 
-# This is the one-way import that is correct
 from bot.handlers import setup_handlers
 
 # --- Setup ---
@@ -23,13 +22,11 @@ WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 # --- Application Lifespan (Handles Startup and Shutdown) ---
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # This block runs on STARTUP
     logger.info("Application startup...")
     if bot_app:
         await bot_app.initialize()
         
         if WEBHOOK_URL:
-            # --- Set Webhook ---
             webhook_full_url = f"{WEBHOOK_URL}/api/telegram/webhook"
             try:
                 await bot_app.bot.set_webhook(url=webhook_full_url, allowed_updates=Update.ALL_TYPES)
@@ -38,22 +35,11 @@ async def lifespan(app: FastAPI):
                 logger.warning(f"Could not set webhook due to flood control. Another worker likely succeeded. Error: {e}")
             except Exception as e:
                 logger.error(f"An unexpected error occurred while setting webhook: {e}")
-
-            # --- CRITICAL FIX: Set Bot Commands for the Menu ---
-            # This tells Telegram what to display in the "Menu" button.
-            commands = [
-                BotCommand("start", "Start the bot and see the welcome message"),
-                BotCommand("play", "Start a new Ludo game")
-            ]
-            await bot_app.bot.set_my_commands(commands)
-            logger.info("Successfully set the command list for the bot menu.")
-
         else:
             logger.error("FATAL: WEBHOOK_URL environment variable is not set!")
     
-    yield # The application runs here
+    yield
     
-    # This block runs on SHUTDOWN
     logger.info("Application shutdown...")
     if bot_app:
         await bot_app.shutdown()
