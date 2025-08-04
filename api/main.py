@@ -70,7 +70,39 @@ async def telegram_webhook(request: Request):
     except Exception as e:
         logger.error(f"Error processing Telegram update: {e}", exc_info=True)
         return Response(status_code=500)
+# In api/main.py, add this new endpoint:
 
+@app.get("/api/games")
+async def get_open_games():
+    """
+    This endpoint will be called by the web app to fetch all games
+    that are currently in the 'lobby' state.
+    """
+    # --- TODO: Database Logic ---
+    # In your real application, you would query your PostgreSQL database here
+    # to find all games with a status of 'lobby'.
+    # For now, we will return some fake "dummy" data so we can build the frontend.
+    dummy_games = [
+        {
+            "id": 123,
+            "creator_name": "Yeab",
+            "creator_avatar": "https://i.pravatar.cc/40?u=123", # Placeholder image
+            "stake": 50,
+            "prize": 90, # 100 total pot - 10% commission
+            "current_players": 1,
+            "max_players": 2,
+        },
+        {
+            "id": 124,
+            "creator_name": "John D.",
+            "creator_avatar": "https://i.pravatar.cc/40?u=124",
+            "stake": 20,
+            "prize": 36, # 40 total pot - 10% commission
+            "current_players": 1,
+            "max_players": 2,
+        }
+    ]
+    return {"games": dummy_games}
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
